@@ -1,3 +1,4 @@
+import time
 import requests
 import get_token
 import pandas as pd
@@ -57,13 +58,20 @@ class WBParser:
         'lang': 'ru',
         'nm': str(nm)
         }
-        response = requests.get(
-                search_url,
-                params=params,
-                cookies={"x_wbaas_token": self.token})
-        result = response.json()
-
-        return result['products'][0]['totalQuantity']
+        for _ in range(3):
+            try:
+                response = requests.get(
+                    search_url, params=params,
+                    cookies={"x_wbaas_token": self.token},
+                    headers=self.HEADERS,
+                    timeout=10
+                )
+                if response.status_code == 200:
+                    result = response.json()
+                    return result['products'][0].get('totalQuantity', 0) 
+            except (requests.exceptions.Timeout, requests.exceptions.RequestException):
+                time.sleep(2)
+        return 0 
         
     def get_product_details(self, id):
         headers = {
@@ -179,42 +187,53 @@ class WBParser:
         else:
             r = "38"
         return r
-
+    
+    def build_product_row(self, product, product_details):
+        characteristics = {i["name"]: i["value"]for i in product_details["options"]}
+        sizes = [i["name"] for i in product["sizes"]]
+        links = self.get_image_url(product_details["media"]["photo_count"], product["id"])
+        result = {"Ссылка на товар":"https://www.wildberries.ru/catalog/{}/detail.aspx".format(product["id"]),
+                    "Артикул": str(product["id"]),
+                    "Название": product["name"], 
+                    "Цена, руб.": product["sizes"][0]["price"]["product"]/100, 
+                    "Описание": product_details["description"], 
+                    "Ссылки на изображения": ", ".join(links), 
+                    "Характеристики":', '.join([f'{key}: {value}' for key, value in characteristics.items()]), 
+                    "Название селлера": product["brand"],
+                    "Ссылка на селлера": "https://www.wildberries.ru/brands/{}".format(product["brand"]),
+                    "Размеры товара":", ".join(sizes),
+                    "Остатки по товару (число)": self.get_qty(product["id"]),
+                    "Рейтинг": product["reviewRating"],
+                    "Количество отзывов": product["feedbacks"]}
+        return result
+    
     def parse(self):
         results = []
 
-        price = self.products["price"]*100
+        price = self.products["price"]
         rating = self.products["rating"]
         country = self.products["country"]
-        data = self.get_fetch(self.SEARCH_URL)
 
+        data = self.get_fetch(self.SEARCH_URL)
         for product in data["products"]:
-            if product["reviewRating"] >= rating:
-                if product["sizes"][0]["price"]["product"] <= price:
-                    product_details = self.get_product_details(product["id"])
-                    check = False
-                    for i in product_details["options"]:
-                        if i["name"] == 'Страна производства' and i["value"] == country:
-                            check = True
-                    if check:
-                        characteristics = {i["name"]: i["value"]for i in product_details["options"]}
-                        sizes = [i["name"] for i in product["sizes"]]
-                        links = self.get_image_url(product_details["media"]["photo_count"], product["id"])
-                        results.append({
-                            "Ссылка на товар":"https://www.wildberries.ru/catalog/{}/detail.aspx".format(product["id"]),
-                            "Артикул": str(product["id"]),
-                            "Название": product["name"], 
-                            "Цена, руб.": product["sizes"][0]["price"]["product"]/100, 
-                            "Описание": product_details["description"], 
-                            "Ссылки на изображения": ", ".join(links), 
-                            "Характеристики":', '.join([f'{key}: {value}' for key, value in characteristics.items()]), 
-                            "Название селлера": product["brand"],
-                            "Ссылка на селлера": "https://www.wildberries.ru/brands/{}".format(product["brand"]),
-                            "Размеры товара":", ".join(sizes),
-                            "Остатки по товару (число)": self.get_qty(product["id"]),
-                            "Рейтинг": product["reviewRating"],
-                            "Количество отзывов": product["feedbacks"]
-                            })
+            if rating is not None and product["reviewRating"] < rating:
+                continue
+            
+            if price is not None and product["sizes"][0]["price"]["product"] > price*100:
+                continue
+                
+            product_details = self.get_product_details(product["id"])
+            if not product_details:
+                continue
+                
+            if country is not None:
+                for i in product_details["options"]:
+                    if i["name"] == 'Страна производства' and i["value"] == country:
+                        results.append(self.build_product_row(product, product_details))
+                        continue
+                continue
+            
+            results.append(self.build_product_row(product, product_details))
         return results
 
     def get_fetch(self, url: str, retries: int = 2):
@@ -237,11 +256,12 @@ class WBParser:
         return None
 
 if __name__ == "__main__":
-    input_data = {"rating": 4.5, "price": 10000, "country": "Россия"}
+    # input_data = {"rating": 4.5, "price": 10000, "country": "Россия"}
+    input_data = {"rating": None, "price": None, "country": None}
     result = WBParser(input_data).parse()
     if result == []:
         print("Не найдено совпадений")
     else:
         result = pd.DataFrame(result)
-        result.to_excel("results.xlsx")
-        print("Результаты записаны в файл results.xlsx")
+        result.to_excel("result.xlsx")
+        print("Результаты записаны в файл result.xlsx")
