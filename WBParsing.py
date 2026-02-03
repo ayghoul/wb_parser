@@ -230,7 +230,7 @@ class WBParser:
                 for i in product_details["options"]:
                     if i["name"] == 'Страна производства' and i["value"] == country:
                         results.append(self.build_product_row(product, product_details))
-                        continue
+                        break
                 continue
             
             results.append(self.build_product_row(product, product_details))
@@ -256,8 +256,8 @@ class WBParser:
         return None
 
 if __name__ == "__main__":
-    # input_data = {"rating": 4.5, "price": 10000, "country": "Россия"}
-    input_data = {"rating": None, "price": None, "country": None}
+    input_data = {"rating": 4.5, "price": 10000, "country": "Россия"}
+    # input_data = {"rating": None, "price": None, "country": None}
     result = WBParser(input_data).parse()
     if result == []:
         print("Не найдено совпадений")
