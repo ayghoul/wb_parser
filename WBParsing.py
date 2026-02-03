@@ -185,33 +185,37 @@ class WBParser:
 
         price = self.products["price"]*100
         rating = self.products["rating"]
+        country = self.products["country"]
         data = self.get_fetch(self.SEARCH_URL)
+
         for product in data["products"]:
-            
             if product["reviewRating"] >= rating:
                 if product["sizes"][0]["price"]["product"] <= price:
                     product_details = self.get_product_details(product["id"])
-                    characteristics = {i["name"]: i["value"]for i in product_details["options"]}
-                    sizes = [i["name"] for i in product["sizes"]]
-                    links = self.get_image_url(product_details["media"]["photo_count"], product["id"])
-                    results.append({
-                        "Ссылка на товар":"https://www.wildberries.ru/catalog/{}/detail.aspx".format(product["id"]),
-                        "Артикул": str(product["id"]),
-                        "Название": product["name"], 
-                        "Цена, руб.": product["sizes"][0]["price"]["product"]/100, 
-                        "Описание": product_details["description"], 
-                        "Ссылки на изображения": ", ".join(links), 
-                        "Характеристики":', '.join([f'{key}: {value}' for key, value in characteristics.items()]), 
-                        "Название селлера": product["brand"],
-                        "Ссылка на селлера": "https://www.wildberries.ru/brands/{}".format(product["brand"]),
-                        "Размеры товара":", ".join(sizes),
-                        "Остатки по товару (число)": self.get_qty(product["id"]),
-                        "Рейтинг": product["reviewRating"],
-                        "Количество отзывов": product["feedbacks"]
-                        })
+                    check = False
+                    for i in product_details["options"]:
+                        if i["name"] == 'Страна производства' and i["value"] == country:
+                            check = True
+                    if check:
+                        characteristics = {i["name"]: i["value"]for i in product_details["options"]}
+                        sizes = [i["name"] for i in product["sizes"]]
+                        links = self.get_image_url(product_details["media"]["photo_count"], product["id"])
+                        results.append({
+                            "Ссылка на товар":"https://www.wildberries.ru/catalog/{}/detail.aspx".format(product["id"]),
+                            "Артикул": str(product["id"]),
+                            "Название": product["name"], 
+                            "Цена, руб.": product["sizes"][0]["price"]["product"]/100, 
+                            "Описание": product_details["description"], 
+                            "Ссылки на изображения": ", ".join(links), 
+                            "Характеристики":', '.join([f'{key}: {value}' for key, value in characteristics.items()]), 
+                            "Название селлера": product["brand"],
+                            "Ссылка на селлера": "https://www.wildberries.ru/brands/{}".format(product["brand"]),
+                            "Размеры товара":", ".join(sizes),
+                            "Остатки по товару (число)": self.get_qty(product["id"]),
+                            "Рейтинг": product["reviewRating"],
+                            "Количество отзывов": product["feedbacks"]
+                            })
         return results
-
-
 
     def get_fetch(self, url: str, retries: int = 2):
         for _ in range(retries):
@@ -233,8 +237,11 @@ class WBParser:
         return None
 
 if __name__ == "__main__":
-    input_data = {"rating": 4.5, "price": 10000}
+    input_data = {"rating": 4.5, "price": 10000, "country": "Россия"}
     result = WBParser(input_data).parse()
-    result = pd.DataFrame(result)
-    result.to_excel("results.xlsx")
-    print("Результаты записаны в файл results.xlsx")
+    if result == []:
+        print("Не найдено совпадений")
+    else:
+        result = pd.DataFrame(result)
+        result.to_excel("results.xlsx")
+        print("Результаты записаны в файл results.xlsx")
